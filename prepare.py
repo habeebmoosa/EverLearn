@@ -98,7 +98,7 @@ from db import (
 
 # Orchestration core + pipeline plugins
 from orchestrator import RatchetOrchestrator
-from pipelines import ResearchPipeline, register_pipeline, list_pipelines
+from pipelines import ResearchPipeline, ContentWriterPipeline, register_pipeline, list_pipelines, get_pipeline
 
 # Import agents
 from train import root_agent, research_iteration_pipeline
@@ -1284,6 +1284,7 @@ async def _startup_cache():
             DB_READY = False
 
     # Register built-in pipelines (plug-and-play)
+    # Each pipeline is self-contained — adding a new vertical = new file in pipelines/
     try:
         register_pipeline(
             ResearchPipeline(
@@ -1291,8 +1292,15 @@ async def _startup_cache():
                 evaluate_fn=_run_quality_evaluator,
             )
         )
+        logger.info("Pipeline registered: research")
     except Exception as e:
-        logger.warning(f"Pipeline registration failed: {e}")
+        logger.warning(f"ResearchPipeline registration failed: {e}")
+
+    try:
+        register_pipeline(ContentWriterPipeline())
+        logger.info("Pipeline registered: content_writer")
+    except Exception as e:
+        logger.warning(f"ContentWriterPipeline registration failed: {e}")
 
 
 def _require_db():
