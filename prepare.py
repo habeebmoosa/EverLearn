@@ -171,6 +171,27 @@ class ResearchRequest(BaseModel):
     data_sources: Optional[List[DataSource]] = None
     config: Optional[ResearchConfig] = None
 
+
+# ── Generic models (pipeline-agnostic) ──────────────────────────────────────
+
+class TaskConfig(BaseModel):
+    """Generic task configuration — superset of ResearchConfig."""
+    max_iterations: int = Field(default=5, ge=1, le=20)
+    depth: str = Field(default="standard", description="'quick', 'standard', 'deep'")
+    max_iteration_timeout: int = Field(default=180, ge=30, le=600)
+    extra: Optional[Dict[str, Any]] = Field(default=None, description="Pipeline-specific extra config")
+
+
+class TaskRequest(BaseModel):
+    """Generic task request — works with any registered pipeline."""
+    pipeline_id: str = Field(default="research", description="Which pipeline to run")
+    label: str = Field(..., min_length=3, max_length=500,
+                       description="Human-readable task label (topic, PR title, config target, etc.)")
+    inputs: Optional[Dict[str, Any]] = Field(default=None,
+                    description="Pipeline-specific inputs (focus_areas, region_id, tone, etc.)")
+    data_sources: Optional[List[DataSource]] = None
+    config: Optional[TaskConfig] = None
+
 class IterationSource(BaseModel):
     title: str = ""
     url: str = ""
@@ -219,16 +240,55 @@ class ResearchResponse(BaseModel):
     data_sources: Optional[List[Dict[str, str]]] = None
 
 
+class TaskResponse(BaseModel):
+    """Generic session response — returned by /api/tasks/* endpoints."""
+    session_id: str
+    pipeline_id: str
+    label: str
+    status: str
+    current_iteration: int
+    max_iterations: int
+    best_score: float
+    current_step: Optional[str] = None
+    iterations: List[IterationSnapshot] = []
+    artifact: Optional[str] = None          # best output produced so far
+    task_inputs: Optional[Dict[str, Any]] = None
+    data_sources: Optional[List[Dict[str, str]]] = None
+
+
 @dataclass
 class _ResearchContext:
-    """Immutable context object passed to the ResearchPipeline plugin.
-    Holds the precomputed fields derived from ResearchRequest so we never
-    mutate the Pydantic model (Pydantic v2 BaseModel is immutable by default).
-    """
+    """Context for the research pipeline (backward compat)."""
     topic: str
     data_sources_list: List[Dict[str, Any]] = dc_field(default_factory=list)
     focus_areas_str: str = ""
     enable_web_search: bool = True
+
+
+@dataclass
+class _TaskContext:
+    """Generic context passed to any pipeline plugin.
+
+    Pipelines access task-specific fields via .get(key) from the inputs dict.
+    Research-compatible attributes (topic, focus_areas_str, enable_web_search,
+    data_sources_list) are exposed directly so ResearchPipeline works unchanged.
+    """
+    pipeline_id: str
+    label: str
+    inputs: Dict[str, Any]
+    data_sources_list: List[Dict[str, Any]] = dc_field(default_factory=list)
+    focus_areas_str: str = ""
+    enable_web_search: bool = True
+    config_extra: Dict[str, Any] = dc_field(default_factory=dict)
+
+    # Backward-compat alias so ResearchPipeline can use request.topic
+    @property
+    def topic(self) -> str:
+        return self.label
+
+    def get(self, key: str, default=None):
+        """Read a pipeline-specific input value."""
+        return self.inputs.get(key, default)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -928,8 +988,129 @@ async def run_research_loop(session_id: str, request: ResearchRequest):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Langfuse Cache — avoids repeated slow API calls to remote server
+# Generic Task Loop — dispatches to any registered pipeline
 # ──────────────────────────────────────────────────────────────────────────────
+
+@observe(name="learning_session")
+async def run_task_loop(session_id: str, request: TaskRequest):
+    """
+    Generic background task: runs the ratchet loop for ANY registered pipeline.
+    Resolves the pipeline from the registry using request.pipeline_id.
+    """
+    session = _research_sessions.get(session_id)
+    if not session and is_db_configured():
+        try:
+            session = await db_get_session(session_id)
+        except Exception:
+            session = None
+    if not session:
+        logger.error(f"[{session_id}] Session not found; aborting task loop")
+        return
+    _research_sessions[session_id] = session
+
+    # Resolve pipeline from registry
+    try:
+        pipeline = get_pipeline(request.pipeline_id)
+    except KeyError:
+        session["status"] = "failed"
+        session["error"] = f"Unknown pipeline: '{request.pipeline_id}'. Register it first."
+        session["updated_at"] = _now()
+        if is_db_configured():
+            await db_save_session(session)
+        logger.error(f"[{session_id}] {session['error']}")
+        return
+
+    clear_search_cache()
+    clear_url_cache()
+
+    config = request.config or TaskConfig()
+    max_iterations = config.max_iterations
+    iteration_timeout = config.max_iteration_timeout
+    if config.depth == "quick":
+        max_iterations = min(max_iterations, 2)
+    elif config.depth == "deep":
+        max_iterations = max(max_iterations, 8)
+    session["max_iterations"] = max_iterations
+
+    inputs = request.inputs or {}
+
+    # Build full data-sources list (with content) for pipeline use
+    data_sources_list: List[Dict[str, Any]] = []
+    if request.data_sources:
+        for ds in request.data_sources:
+            data_sources_list.append({"type": ds.type, "content": ds.content, "label": ds.label or ""})
+
+    # Build generic context — research-compat fields extracted from inputs
+    focus_areas_raw = inputs.get("focus_areas", "")
+    if isinstance(focus_areas_raw, list):
+        focus_areas_str = ",".join(focus_areas_raw)
+    else:
+        focus_areas_str = str(focus_areas_raw) if focus_areas_raw else ""
+
+    pipeline_request = _TaskContext(
+        pipeline_id=request.pipeline_id,
+        label=request.label,
+        inputs=inputs,
+        data_sources_list=data_sources_list,
+        focus_areas_str=focus_areas_str,
+        enable_web_search=bool(inputs.get("enable_web_search", True)),
+        config_extra=config.extra or {},
+    )
+
+    if _langfuse:
+        _langfuse.update_current_span(
+            metadata={
+                "session_id": session_id,
+                "pipeline_id": request.pipeline_id,
+                "label": request.label,
+                "max_iterations": max_iterations,
+                "inputs": inputs,
+            }
+        )
+
+    async def _persist(s: dict):
+        if is_db_configured():
+            await db_save_session(s)
+
+    orchestrator = RatchetOrchestrator(
+        plugin=pipeline,
+        persist_session=_persist,
+        now_fn=_now,
+        logger=logger,
+    )
+
+    try:
+        await orchestrator.run(
+            session_id=session_id,
+            session=session,
+            request=pipeline_request,
+            iteration_timeout_seconds=iteration_timeout,
+        )
+    except Exception as e:
+        logger.error(f"[{session_id}] Task loop failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+    logger.info(
+        f"[{session_id}] Task complete. Pipeline={request.pipeline_id}, "
+        f"Status={session['status']}, Best score={session['best_score']}"
+    )
+
+    if _langfuse:
+        try:
+            _langfuse.set_current_trace_io(
+                input={"pipeline_id": request.pipeline_id, "label": request.label, "inputs": inputs},
+                output={
+                    "status": session["status"],
+                    "best_score": session["best_score"],
+                    "iterations_count": len(session["iterations"]),
+                },
+            )
+            _langfuse.flush()
+        except Exception:
+            pass
+
+
 
 # Cache: { session_id: ResearchResponse } built from Langfuse traces
 _langfuse_cache: Dict[str, Any] = {}  # sid -> ResearchResponse
@@ -1125,8 +1306,23 @@ def _require_db():
 
 @app.get("/api/pipelines")
 async def get_pipelines():
-    """List available orchestration pipelines (plugins)."""
-    return {"pipelines": list_pipelines()}
+    """List all registered pipelines with full metadata and input schema."""
+    result = []
+    for p_meta in list_pipelines():
+        pid = p_meta["id"]
+        try:
+            plugin = get_pipeline(pid)
+        except KeyError:
+            continue
+        result.append({
+            "id": pid,
+            "name": p_meta["name"],
+            "description": getattr(plugin, "description", ""),
+            "output_label": getattr(plugin, "output_label", "Artifact"),
+            "input_schema": plugin.get_input_schema() if callable(getattr(plugin, "get_input_schema", None)) else {},
+            "display_config": plugin.get_display_config() if callable(getattr(plugin, "get_display_config", None)) else {},
+        })
+    return {"pipelines": result}
 
 
 @app.post("/api/research/refresh-cache")
@@ -1306,6 +1502,70 @@ async def start_research(request: ResearchRequest, background_tasks: BackgroundT
         "session_id": session_id,
         "status": "queued",
         "topic": request.topic,
+        "max_iterations": max_iter,
+    }
+
+
+@app.post("/api/tasks/start")
+async def start_task(request: TaskRequest, background_tasks: BackgroundTasks):
+    """Start a new task with any registered pipeline (generic endpoint)."""
+    _require_db()
+    session_id = str(uuid.uuid4())
+    config = request.config or TaskConfig()
+
+    max_iter = config.max_iterations
+    if config.depth == "quick":
+        max_iter = min(max_iter, 2)
+    elif config.depth == "deep":
+        max_iter = max(max_iter, 8)
+
+    # Data sources metadata (label + preview only, no full content)
+    session_data_sources = []
+    if request.data_sources:
+        for ds in request.data_sources:
+            session_data_sources.append({
+                "type": ds.type,
+                "label": ds.label or "",
+                "content": ds.content[:200] if ds.type == "url" else "",
+            })
+
+    session = {
+        "session_id": session_id,
+        "pipeline_id": request.pipeline_id,      # which pipeline
+        "label": request.label,                   # generic task label
+        "topic": request.label,                   # backward compat alias
+        "task_inputs": request.inputs or {},       # pipeline-specific inputs
+        "status": "queued",
+        "current_iteration": 0,
+        "current_step": "Starting...",
+        "max_iterations": max_iter,
+        "best_iteration": 0,
+        "best_score": 0.0,
+        "iterations": [],
+        "best_report": None,
+        "created_at": _now(),
+        "updated_at": _now(),
+        "error": None,
+        "data_sources": session_data_sources,
+        "config": {
+            "depth": config.depth,
+            "max_iterations": max_iter,
+            "extra": config.extra or {},
+            "data_sources_count": len(request.data_sources) if request.data_sources else 0,
+        },
+    }
+    _research_sessions[session_id] = session
+
+    if is_db_configured():
+        await db_save_session(session)
+
+    background_tasks.add_task(run_task_loop, session_id, request)
+
+    return {
+        "session_id": session_id,
+        "pipeline_id": request.pipeline_id,
+        "label": request.label,
+        "status": "queued",
         "max_iterations": max_iter,
     }
 

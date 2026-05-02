@@ -68,7 +68,8 @@ class ResearchSession(Base):
     __tablename__ = "research_sessions"
 
     session_id = Column(String, primary_key=True, index=True)
-    topic = Column(Text, nullable=False)
+    pipeline_id = Column(String, nullable=False, default="research")  # which pipeline ran
+    topic = Column(Text, nullable=False)          # label / topic (shared naming)
     status = Column(String, nullable=False)
     current_iteration = Column(Integer, nullable=False, default=0)
     max_iterations = Column(Integer, nullable=False, default=0)
@@ -76,6 +77,7 @@ class ResearchSession(Base):
     best_score = Column(Float, nullable=False, default=0.0)
     iterations = Column(JSON, nullable=False, default=list)
     best_report = Column(Text, nullable=True)
+    task_inputs = Column(JSON, nullable=True)     # pipeline-specific input fields
     data_sources = Column(JSON, nullable=True)
     config = Column(JSON, nullable=True)
     error = Column(Text, nullable=True)
@@ -113,9 +115,12 @@ async def _get_session() -> AsyncSession:
 
 
 def _session_dict_to_model(data: Dict[str, Any]) -> ResearchSession:
+    # Support both "label" (generic) and "topic" (research compat)
+    label = data.get("label") or data.get("topic", "")
     return ResearchSession(
         session_id=data["session_id"],
-        topic=data["topic"],
+        pipeline_id=data.get("pipeline_id", "research"),
+        topic=label,
         status=data["status"],
         current_iteration=data.get("current_iteration", 0),
         max_iterations=data.get("max_iterations", 0),
@@ -123,6 +128,7 @@ def _session_dict_to_model(data: Dict[str, Any]) -> ResearchSession:
         best_score=float(data.get("best_score", 0.0)),
         iterations=data.get("iterations", []),
         best_report=data.get("best_report"),
+        task_inputs=data.get("task_inputs") or data.get("inputs"),
         data_sources=data.get("data_sources"),
         config=data.get("config"),
         error=data.get("error"),
@@ -134,7 +140,9 @@ def _session_dict_to_model(data: Dict[str, Any]) -> ResearchSession:
 def _model_to_session_dict(model: ResearchSession) -> Dict[str, Any]:
     return {
         "session_id": model.session_id,
-        "topic": model.topic,
+        "pipeline_id": model.pipeline_id or "research",
+        "topic": model.topic,          # backward compat
+        "label": model.topic,          # generic alias
         "status": model.status,
         "current_iteration": model.current_iteration,
         "max_iterations": model.max_iterations,
@@ -142,6 +150,7 @@ def _model_to_session_dict(model: ResearchSession) -> Dict[str, Any]:
         "best_score": float(model.best_score or 0.0),
         "iterations": model.iterations or [],
         "best_report": model.best_report,
+        "task_inputs": model.task_inputs or {},
         "data_sources": model.data_sources or [],
         "config": model.config or {},
         "error": model.error,
@@ -157,8 +166,10 @@ async def save_session(session_data: Dict[str, Any]) -> None:
     db = await _get_session()
     async with db:
         existing = await db.get(ResearchSession, session_data["session_id"])
+        label = session_data.get("label") or session_data.get("topic", "")
         if existing:
-            existing.topic = session_data["topic"]
+            existing.pipeline_id = session_data.get("pipeline_id", "research")
+            existing.topic = label
             existing.status = session_data["status"]
             existing.current_iteration = session_data.get("current_iteration", 0)
             existing.max_iterations = session_data.get("max_iterations", 0)
@@ -166,6 +177,7 @@ async def save_session(session_data: Dict[str, Any]) -> None:
             existing.best_score = float(session_data.get("best_score", 0.0))
             existing.iterations = session_data.get("iterations", [])
             existing.best_report = session_data.get("best_report")
+            existing.task_inputs = session_data.get("task_inputs") or session_data.get("inputs")
             existing.data_sources = session_data.get("data_sources")
             existing.config = session_data.get("config")
             existing.error = session_data.get("error")
