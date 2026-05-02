@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EverLearn - Autonomous Self Learning Agent</title>
+    <title>EverLearn - Self-Learning Agent Platform</title>
+    <meta name="description" content="EverLearn: a plug-and-play iterative improvement engine. Pick a pipeline, describe your task, and the agent ratchets toward the best output.">
     <link rel="stylesheet" href="/static/styles.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -15,12 +16,12 @@
     <!-- ──── LEFT SIDEBAR: Sessions ──── -->
     <aside id="sidebar">
         <div class="sidebar-brand">
-            <div class="brand-icon">AL</div>
+            <div class="brand-icon">EL</div>
             <span class="brand-name">EverLearn</span>
         </div>
         <button class="new-session-btn" id="new-session-btn" onclick="showNewSession()">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-            New Learning
+            New Task
         </button>
         <div class="sidebar-section-label">Sessions</div>
         <div id="sidebar-sessions" class="sidebar-sessions"></div>
@@ -29,21 +30,33 @@
     <!-- ──── CENTER: Main Content ──── -->
     <main id="main-content">
 
-        <!-- NEW SESSION FORM -->
+        <!-- NEW TASK FORM -->
         <div id="panel-new" class="panel active">
             <div class="panel-header">
-                <h1>Start a New Learning Session</h1>
-                <p class="panel-subtitle">Provide a topic and optional sources. EverLearn will autonomously iterate to build a comprehensive report.</p>
+                <h1>Start a New Task</h1>
+                <p class="panel-subtitle">Pick a pipeline, describe your task, and EverLearn will iteratively improve until it gets it right.</p>
             </div>
             <div class="form-card">
+
+                <!-- Step 1: Pipeline Selector -->
                 <div class="form-group">
-                    <label for="topic">What do you want to learn about?</label>
-                    <input type="text" id="topic" placeholder="e.g., The impact of quantum computing on modern cryptography" maxlength="500" autofocus>
+                    <label>What do you want to improve?</label>
+                    <div id="pipeline-cards" class="pipeline-cards">
+                        <div class="pipeline-card pipeline-card-skeleton"></div>
+                        <div class="pipeline-card pipeline-card-skeleton"></div>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="focus-areas">Focus Areas <span class="hint">(comma-separated, optional)</span></label>
-                    <input type="text" id="focus-areas" placeholder="e.g., security implications, timeline, industry adoption">
+
+                <!-- Step 2: Main task label (always visible, placeholder changes per pipeline) -->
+                <div class="form-group" id="label-group">
+                    <label for="task-label" id="label-heading">Task</label>
+                    <input type="text" id="task-label" placeholder="Describe your task..." maxlength="500" autofocus>
                 </div>
+
+                <!-- Step 3: Dynamic pipeline-specific fields (rendered by JS) -->
+                <div id="pipeline-fields"></div>
+
+                <!-- Step 4: Depth + Iterations (always visible) -->
                 <div class="form-row">
                     <div class="form-group">
                         <label for="depth">Depth</label>
@@ -57,15 +70,18 @@
                         <label for="max-iterations">Max Iterations</label>
                         <input type="number" id="max-iterations" min="1" max="20" value="5">
                     </div>
-                    <div class="form-group">
+                    <!-- Web search toggle — shown only for pipelines that support it -->
+                    <div class="form-group" id="web-search-group" style="display:none;">
                         <label class="toggle-wrap">
                             <input type="checkbox" id="web-search" checked>
                             <span>Web Search</span>
                         </label>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label>Data Sources <span class="hint">(optional)</span></label>
+
+                <!-- Step 5: Data sources (shown unless pipeline hides them) -->
+                <div class="form-group" id="data-sources-group">
+                    <label>Reference Material <span class="hint">(optional — URLs, files, text)</span></label>
                     <div id="sources-container"></div>
                     <div class="source-btns">
                         <button class="btn-ghost" onclick="addSource('url')">+ URL</button>
@@ -73,13 +89,14 @@
                         <button class="btn-ghost" onclick="addSource('file')">+ File</button>
                     </div>
                 </div>
-                <button class="btn-primary" onclick="startResearch()" id="start-btn">Start Learning</button>
+
+                <button class="btn-primary" onclick="startTask()" id="start-btn">Start</button>
             </div>
         </div>
 
         <!-- LIVE PROGRESS / RESULTS PANEL -->
         <div id="panel-session" class="panel">
-            <!-- Top bar with topic + status -->
+            <!-- Top bar -->
             <div class="session-topbar">
                 <div class="session-topbar-left">
                     <h1 id="session-topic">Loading...</h1>
@@ -101,16 +118,16 @@
                 <div class="metric"><span class="metric-val" id="m-duration">--</span><span class="metric-label">Duration</span></div>
             </div>
 
-            <!-- Progress bar (only visible while running) -->
+            <!-- Progress bar -->
             <div class="progress-track" id="progress-track">
                 <div class="progress-fill" id="progress-fill"></div>
             </div>
             <p class="step-text" id="step-text"></p>
 
-            <!-- Live activity feed -->
+            <!-- Activity feed -->
             <h2 class="report-heading" id="feed-heading" style="display:none;">Iteration Results</h2>
             <div class="activity-feed" id="activity-feed">
-                <div class="feed-placeholder">Waiting for learning to start...</div>
+                <div class="feed-placeholder">Waiting for task to start...</div>
             </div>
 
             <!-- Quality chart -->
@@ -119,9 +136,9 @@
                 <canvas id="quality-chart"></canvas>
             </div>
 
-            <!-- Report (rendered when complete) -->
+            <!-- Output artifact -->
             <div class="report-section" id="report-section" style="display:none;">
-                <h2 class="report-heading">Learning Report</h2>
+                <h2 class="report-heading" id="artifact-heading">Output</h2>
                 <div id="report-content" class="markdown-body"></div>
             </div>
         </div>

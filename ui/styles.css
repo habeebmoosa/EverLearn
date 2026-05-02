@@ -660,3 +660,113 @@ details[open] .rubric-toggle::before { transform: rotate(90deg); }
     body { grid-template-columns: 1fr; }
     #sidebar { display: none; }
 }
+
+/* ──── Phase 3: Pipeline Selector Cards ──── */
+
+.pipeline-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.pipeline-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    user-select: none;
+}
+
+.pipeline-card:hover {
+    border-color: var(--primary-light);
+    box-shadow: 0 2px 8px rgba(156,39,176,0.1);
+}
+
+.pipeline-card.active {
+    border-color: var(--primary);
+    background: var(--primary-bg);
+    box-shadow: 0 0 0 3px rgba(156,39,176,0.12);
+}
+
+.pcard-icon {
+    font-size: 22px;
+    line-height: 1;
+    flex-shrink: 0;
+    padding-top: 1px;
+}
+
+.pcard-body { flex: 1; min-width: 0; }
+
+.pcard-name {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--text);
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.pcard-desc {
+    font-size: 11.5px;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Skeleton loading state */
+.pipeline-card-skeleton {
+    height: 72px;
+    background: linear-gradient(90deg, #f0f0f0 25%, #e8e8e8 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite;
+    border: none;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ──── Pipeline badge in sidebar ──── */
+
+.sb-pipeline-badge {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--primary);
+    background: var(--primary-bg);
+    border-radius: 4px;
+    padding: 1px 5px;
+    margin-right: 3px;
+    vertical-align: middle;
+}
+
+/* ──── Dynamic form fields ──── */
+
+#pipeline-fields textarea {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+    font-family: var(--font);
+    color: var(--text);
+    background: var(--card-bg);
+    resize: vertical;
+    min-height: 60px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+#pipeline-fields textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(156,39,176,0.1);
+}

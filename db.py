@@ -10,6 +10,7 @@ from sqlalchemy import (
     Text,
     JSON,
     select,
+    text,
 )
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -94,6 +95,27 @@ async def init_db() -> None:
         return
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _run_migrations()
+
+
+async def _run_migrations() -> None:
+    """Add new columns to existing tables without dropping anything.
+    Uses IF NOT EXISTS so this is safe to run on every startup."""
+    if not engine:
+        return
+    migrations = [
+        # Phase 1: generic pipeline support
+        "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS pipeline_id VARCHAR DEFAULT 'research'",
+        "ALTER TABLE research_sessions ADD COLUMN IF NOT EXISTS task_inputs JSONB",
+    ]
+    async with engine.begin() as conn:
+        for sql in migrations:
+            try:
+                await conn.execute(text(sql))
+            except Exception as e:
+                # Log but don't crash — column may already exist on some DB dialects
+                import logging
+                logging.getLogger("everlearn").warning(f"Migration skipped ({sql[:60]}...): {e}")
 
 
 async def check_db() -> bool:

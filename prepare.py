@@ -98,7 +98,7 @@ from db import (
 
 # Orchestration core + pipeline plugins
 from orchestrator import RatchetOrchestrator
-from pipelines import ResearchPipeline, ContentWriterPipeline, register_pipeline, list_pipelines, get_pipeline
+from pipelines import ResearchPipeline, ContentWriterPipeline, CodeReviewerPipeline, register_pipeline, list_pipelines, get_pipeline
 
 # Import agents
 from train import root_agent, research_iteration_pipeline
@@ -1302,6 +1302,11 @@ async def _startup_cache():
     except Exception as e:
         logger.warning(f"ContentWriterPipeline registration failed: {e}")
 
+    try:
+        register_pipeline(CodeReviewerPipeline())
+        logger.info("Pipeline registered: code_reviewer")
+    except Exception as e:
+        logger.warning(f"CodeReviewerPipeline registration failed: {e}")
 
 def _require_db():
     """Raise a clean HTTP error if DB is configured but not available."""

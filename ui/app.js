@@ -8,7 +8,11 @@ let qualityChart = null;
 let sourceCounter = 0;
 let currentReportMarkdown = '';
 let currentSessionData = null;
-let currentSessionSources = []; // user-provided sources for the active session
+let currentSessionSources = [];
+
+// Pipeline state
+let availablePipelines = [];
+let selectedPipeline = null;
 
 // ──── Markdown Renderer ────
 
@@ -58,7 +62,143 @@ function showNewSession() {
     updateSidebarActive(null);
     document.getElementById('rp-sources').innerHTML = '<div class="rp-empty">Add sources when creating a session.</div>';
     document.getElementById('rp-metrics').innerHTML = '<div class="rp-empty">No metrics yet.</div>';
+    // Clear form
+    document.getElementById('task-label').value = '';
+    document.getElementById('sources-container').innerHTML = '';
 }
+
+// ──── Pipeline Selector ────
+
+async function loadPipelines() {
+    try {
+        const resp = await fetch('/api/pipelines');
+        const data = await resp.json();
+        availablePipelines = data.pipelines || [];
+        renderPipelineCards();
+        if (availablePipelines.length > 0) selectPipeline(availablePipelines[0].id);
+    } catch (e) {
+        console.error('Failed to load pipelines:', e);
+        // Fallback: pre-select research
+        availablePipelines = [{ id: 'research', name: 'Research', description: '', output_label: 'Report', input_schema: {}, display_config: {} }];
+        renderPipelineCards();
+        selectPipeline('research');
+    }
+}
+
+function renderPipelineCards() {
+    const container = document.getElementById('pipeline-cards');
+    if (!availablePipelines.length) {
+        container.innerHTML = '<div class="rp-empty">No pipelines available.</div>';
+        return;
+    }
+    // Icon map for known pipeline types
+    const icons = {
+        research: '🔍',
+        content_writer: '✍️',
+        code_reviewer: '💻',
+        postmortem: '📋',
+        telecom_config: '📡',
+        sql_optimizer: '🗄️',
+    };
+    container.innerHTML = availablePipelines.map(p => `
+        <div class="pipeline-card" id="pcard-${p.id}" data-id="${p.id}" onclick="selectPipeline('${p.id}')">
+            <div class="pcard-icon">${icons[p.id] || '⚡'}</div>
+            <div class="pcard-body">
+                <div class="pcard-name">${esc(p.name)}</div>
+                <div class="pcard-desc">${esc(p.description || '')}</div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function selectPipeline(pipelineId) {
+    selectedPipeline = availablePipelines.find(p => p.id === pipelineId);
+    if (!selectedPipeline) return;
+
+    // Update active card
+    document.querySelectorAll('.pipeline-card').forEach(c =>
+        c.classList.toggle('active', c.dataset.id === pipelineId));
+
+    const cfg = selectedPipeline.display_config || {};
+    const schema = selectedPipeline.input_schema || {};
+
+    // Update label heading + placeholder
+    const labelProp = (schema.properties || {}).label || {};
+    document.getElementById('label-heading').textContent = labelProp.title || 'Task';
+    document.getElementById('task-label').placeholder = cfg.label_placeholder || 'Describe your task...';
+
+    // Max iterations default
+    if (cfg.max_iterations_default) {
+        document.getElementById('max-iterations').value = cfg.max_iterations_default;
+    }
+
+    // Show/hide web search
+    document.getElementById('web-search-group').style.display = cfg.show_web_search ? '' : 'none';
+
+    // Show/hide data sources
+    document.getElementById('data-sources-group').style.display =
+        cfg.show_data_sources === false ? 'none' : '';
+
+    // Render dynamic pipeline-specific fields
+    renderPipelineFields(schema, cfg);
+
+    // Update artifact heading
+    document.getElementById('artifact-heading').textContent =
+        selectedPipeline.output_label || 'Output';
+}
+
+function renderPipelineFields(schema, cfg) {
+    const container = document.getElementById('pipeline-fields');
+    const props = schema.properties || {};
+    const html = [];
+
+    for (const [key, def] of Object.entries(props)) {
+        // Skip 'label' — it's always the main input above
+        if (key === 'label') continue;
+        // Skip enable_web_search — controlled by the toggle
+        if (key === 'enable_web_search') continue;
+
+        const title = def.title || key.replace(/_/g, ' ');
+        const desc = def.description ? `<span class="hint"> — ${esc(def.description)}</span>` : '';
+        const required = (schema.required || []).includes(key);
+
+        let input = '';
+        if (def.type === 'boolean') {
+            const checked = def.default !== false ? 'checked' : '';
+            input = `<label class="toggle-wrap">
+                <input type="checkbox" id="pf-${key}" data-input-key="${key}" ${checked}>
+                <span>${esc(title)}</span>
+            </label>`;
+        } else if (def.enum) {
+            const opts = def.enum.map(v =>
+                `<option value="${v}" ${v === def.default ? 'selected' : ''}>${v.replace(/_/g, ' ')}</option>`
+            ).join('');
+            input = `<select id="pf-${key}" data-input-key="${key}">${opts}</select>`;
+        } else if (def.type === 'number' || def.type === 'integer') {
+            input = `<input type="number" id="pf-${key}" data-input-key="${key}" 
+                placeholder="${esc(def.description || '')}" ${def.default != null ? `value="${def.default}"` : ''}>`;
+        } else {
+            // Default: text input or textarea for longer fields
+            const isLong = key === 'rubric' || (def.description || '').length > 60;
+            if (isLong) {
+                input = `<textarea id="pf-${key}" data-input-key="${key}" rows="2"
+                    placeholder="${esc(def.description || title)}"></textarea>`;
+            } else {
+                input = `<input type="text" id="pf-${key}" data-input-key="${key}"
+                    placeholder="${esc(def.description || title)}">`;
+            }
+        }
+
+        html.push(`
+            <div class="form-group">
+                <label for="pf-${key}">${esc(title)}${required ? '' : ' <span class="hint">(optional)</span>'}${desc}</label>
+                ${input}
+            </div>
+        `);
+    }
+    container.innerHTML = html.join('');
+}
+
 
 // ──── Sidebar Sessions ────
 
@@ -71,17 +211,26 @@ async function loadSidebarSessions() {
             container.innerHTML = '<div class="rp-empty" style="padding:12px 8px;">No sessions yet.</div>';
             return;
         }
-        container.innerHTML = data.sessions.sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map(s => `
-            <div class="sb-item ${s.session_id === currentSessionId ? 'active' : ''}" onclick="loadSession('${s.session_id}')">
-                <span class="sb-item-title">${esc(s.topic)}</span>
-                <span class="sb-item-meta">
-                    <span class="sb-dot ${s.status}"></span>
-                    ${s.current_iteration}/${s.max_iterations} iters &middot; Score ${Math.round(s.best_score)}
-                </span>
-            </div>
-        `).join('');
+        container.innerHTML = data.sessions
+            .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+            .map(s => {
+                const label = s.label || s.topic || 'Untitled';
+                const pipelineId = s.pipeline_id || 'research';
+                const pipelineBadge = pipelineId !== 'research'
+                    ? `<span class="sb-pipeline-badge">${esc(pipelineId.replace(/_/g, '·'))}</span>` : '';
+                return `
+                <div class="sb-item ${s.session_id === currentSessionId ? 'active' : ''}" onclick="loadSession('${s.session_id}')">
+                    <span class="sb-item-title">${esc(label)}</span>
+                    <span class="sb-item-meta">
+                        <span class="sb-dot ${s.status}"></span>
+                        ${pipelineBadge}
+                        ${s.current_iteration}/${s.max_iterations} iters &middot; Score ${Math.round(s.best_score)}
+                    </span>
+                </div>`;
+            }).join('');
     } catch (e) { console.error('Sidebar load error:', e); }
 }
+
 
 function updateSidebarActive(id) {
     document.querySelectorAll('.sb-item').forEach(el => el.classList.remove('active'));
@@ -126,17 +275,19 @@ function collectSources() {
     return sources;
 }
 
-// ──── Start Learning ────
+// ──── Start Task (generic) ────
 
-async function startResearch() {
-    const topic = document.getElementById('topic').value.trim();
-    if (!topic) { alert('Please enter a topic'); return; }
+async function startTask() {
+    if (!selectedPipeline) { alert('Please select a pipeline'); return; }
+    const label = document.getElementById('task-label').value.trim();
+    if (!label) { alert('Please describe your task'); return; }
 
     const btn = document.getElementById('start-btn');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner"></span>Starting...';
 
     try {
+        // Upload any file sources first
         const sources = collectSources();
         const dataSources = [];
         for (const src of sources) {
@@ -150,35 +301,64 @@ async function startResearch() {
                 dataSources.push({ type: src.type, content: src.content, label: src.label });
             }
         }
-
         currentSessionSources = dataSources;
-        const focusAreas = document.getElementById('focus-areas').value.trim();
+
+        // Collect dynamic pipeline-specific inputs from rendered fields
+        const inputs = {};
+        document.querySelectorAll('[data-input-key]').forEach(el => {
+            const key = el.dataset.inputKey;
+            if (el.type === 'checkbox') {
+                inputs[key] = el.checked;
+            } else if (el.value.trim()) {
+                inputs[key] = el.value.trim();
+            }
+        });
+
+        // Web search (if shown)
+        const webSearchEl = document.getElementById('web-search');
+        if (webSearchEl && document.getElementById('web-search-group').style.display !== 'none') {
+            inputs.enable_web_search = webSearchEl.checked;
+        }
+
         const depth = document.getElementById('depth').value;
         const maxIter = parseInt(document.getElementById('max-iterations').value) || 5;
-        const webSearch = document.getElementById('web-search').checked;
 
-        const resp = await fetch('/api/research/start', {
+        const body = {
+            pipeline_id: selectedPipeline.id,
+            label,
+            inputs: Object.keys(inputs).length ? inputs : null,
+            data_sources: dataSources.length ? dataSources : null,
+            config: { max_iterations: maxIter, depth },
+        };
+
+        const resp = await fetch('/api/tasks/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                topic,
-                data_sources: dataSources.length ? dataSources : null,
-                config: { max_iterations: maxIter, depth, focus_areas: focusAreas ? focusAreas.split(',').map(s => s.trim()).filter(Boolean) : null, enable_web_search: webSearch },
-            }),
+            body: JSON.stringify(body),
         });
-        if (!resp.ok) throw new Error('Failed to start');
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || 'Failed to start task');
+        }
         const data = await resp.json();
         currentSessionId = data.session_id;
 
-        openSession(data.session_id, topic, data.max_iterations);
+        // Update artifact heading from pipeline
+        document.getElementById('artifact-heading').textContent =
+            selectedPipeline.output_label || 'Output';
+
+        openSession(data.session_id, label, data.max_iterations);
         loadSidebarSessions();
     } catch (err) {
         alert('Error: ' + err.message);
     } finally {
         btn.disabled = false;
-        btn.innerHTML = 'Start Learning';
+        btn.innerHTML = 'Start';
     }
 }
+
+// Keep old name as alias (backward compat with any bookmarked calls)
+function startResearch() { return startTask(); }
 
 // ──── Open / Load Session ────
 
@@ -647,3 +827,4 @@ document.getElementById('depth').addEventListener('change', function() {
 
 // ──── Init ────
 loadSidebarSessions();
+loadPipelines();
