@@ -98,7 +98,10 @@ from db import (
 
 # Orchestration core + pipeline plugins
 from orchestrator import RatchetOrchestrator
-from pipelines import ResearchPipeline, ContentWriterPipeline, CodeReviewerPipeline, register_pipeline, list_pipelines, get_pipeline
+from pipelines import (
+    ResearchPipeline, ContentWriterPipeline, CodeReviewerPipeline,
+    BasePipeline, register_pipeline, get_pipeline_ids, list_pipelines, get_pipeline,
+)
 
 # Import agents
 from train import root_agent, research_iteration_pipeline
@@ -1307,6 +1310,60 @@ async def _startup_cache():
         logger.info("Pipeline registered: code_reviewer")
     except Exception as e:
         logger.warning(f"CodeReviewerPipeline registration failed: {e}")
+
+    # Phase 5: Auto-discover any additional pipelines dropped into pipelines/
+    await _auto_discover_pipelines()
+
+
+async def _auto_discover_pipelines() -> None:
+    """Scan the pipelines/ package and auto-register BasePipeline subclasses
+    that have a no-argument constructor and haven't been manually registered yet.
+
+    To add a new pipeline:
+      1. Create pipelines/my_pipeline.py with class MyPipeline(BasePipeline)
+      2. Restart the server — no changes to prepare.py needed.
+    """
+    import importlib
+    import inspect
+    import pkgutil
+    import pipelines as _pipelines_pkg
+
+    already = set(get_pipeline_ids())
+    _SKIP = {"registry", "base", "__init__"}
+
+    for _, mod_name, _ in pkgutil.iter_modules(_pipelines_pkg.__path__):
+        if mod_name in _SKIP:
+            continue
+        try:
+            module = importlib.import_module(f"pipelines.{mod_name}")
+        except Exception as e:
+            logger.warning(f"Auto-discovery: could not import pipelines.{mod_name}: {e}")
+            continue
+
+        for attr_name in dir(module):
+            obj = getattr(module, attr_name, None)
+            if not (isinstance(obj, type) and issubclass(obj, BasePipeline) and obj is not BasePipeline):
+                continue
+            pid = getattr(obj, "plugin_id", None)
+            if not pid or pid == "base" or pid in already:
+                continue
+            # Only auto-instantiate if __init__ has no required non-self params
+            try:
+                sig = inspect.signature(obj.__init__)
+                required = [
+                    p for name, p in sig.parameters.items()
+                    if name != "self" and p.default is inspect.Parameter.empty
+                ]
+                if required:
+                    logger.debug(f"Auto-discovery: skipping {attr_name} (needs constructor args: {[p.name for p in required]})")
+                    continue
+                instance = obj()
+                register_pipeline(instance)
+                already.add(pid)
+                logger.info(f"Auto-discovered pipeline: {pid}")
+            except Exception as e:
+                logger.warning(f"Auto-discovery: could not register {attr_name}: {e}")
+
 
 def _require_db():
     """Raise a clean HTTP error if DB is configured but not available."""

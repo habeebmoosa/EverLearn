@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Optional
 
 from google.adk.agents import SequentialAgent
 from google.adk.runners import InMemoryRunner
-from google import genai as genai_types
+from google.genai import types as genai_types
 
 from orchestrator.types import Artifact, EvaluationResult, IterationResult
 from pipelines.base import BasePipeline
@@ -191,9 +191,9 @@ class ContentWriterPipeline(BasePipeline):
         if state["data_sources"]:
             trigger_text += f"\n\n## Reference Material\n\n{state['data_sources']}"
 
-        trigger = genai_types.protos.Content(
+        trigger = genai_types.Content(
             role="user",
-            parts=[genai_types.protos.Part(text=trigger_text)],
+            parts=[genai_types.Part.from_text(text=trigger_text)],
         )
 
         step_names = {
@@ -293,9 +293,9 @@ class ContentWriterPipeline(BasePipeline):
             state=eval_state,
         )
 
-        trigger = genai_types.protos.Content(
+        trigger = genai_types.Content(
             role="user",
-            parts=[genai_types.protos.Part(
+            parts=[genai_types.Part.from_text(
                 text=(
                     f"Evaluate the new content draft for iteration {iteration}.\n"
                     f"Task: {request.label}\n"

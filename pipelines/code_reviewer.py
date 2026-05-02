@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from google.adk.agents import SequentialAgent
 from google.adk.runners import InMemoryRunner
-from google import genai as genai_types
+from google.genai import types as genai_types
 
 from orchestrator.types import Artifact, EvaluationResult, IterationResult
 from pipelines.base import BasePipeline
@@ -177,9 +177,9 @@ class CodeReviewerPipeline(BasePipeline):
         if state["code_content"] and state["code_content"] != "(No code provided — review from description only)":
             trigger_text += f"\n\n## Code / Diff to Review\n\n{state['code_content']}"
 
-        trigger = genai_types.protos.Content(
+        trigger = genai_types.Content(
             role="user",
-            parts=[genai_types.protos.Part(text=trigger_text)],
+            parts=[genai_types.Part.from_text(text=trigger_text)],
         )
 
         step_names = {
@@ -280,9 +280,9 @@ class CodeReviewerPipeline(BasePipeline):
             app_name=eval_app, user_id="review_eval_user", state=eval_state
         )
 
-        trigger = genai_types.protos.Content(
+        trigger = genai_types.Content(
             role="user",
-            parts=[genai_types.protos.Part(
+            parts=[genai_types.Part.from_text(
                 text=(
                     f"Evaluate the code review for iteration {iteration}.\n"
                     f"PR/Change: {request.label}\n"
