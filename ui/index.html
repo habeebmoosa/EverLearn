@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EverLearn - Autonomous Self Learning Agent</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked@9.1.6/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <!-- ──── LEFT SIDEBAR: Sessions ──── -->
+    <aside id="sidebar">
+        <div class="sidebar-brand">
+            <div class="brand-icon">AL</div>
+            <span class="brand-name">EverLearn</span>
+        </div>
+        <button class="new-session-btn" id="new-session-btn" onclick="showNewSession()">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            New Learning
+        </button>
+        <div class="sidebar-section-label">Sessions</div>
+        <div id="sidebar-sessions" class="sidebar-sessions"></div>
+    </aside>
+
+    <!-- ──── CENTER: Main Content ──── -->
+    <main id="main-content">
+
+        <!-- NEW SESSION FORM -->
+        <div id="panel-new" class="panel active">
+            <div class="panel-header">
+                <h1>Start a New Learning Session</h1>
+                <p class="panel-subtitle">Provide a topic and optional sources. EverLearn will autonomously iterate to build a comprehensive report.</p>
+            </div>
+            <div class="form-card">
+                <div class="form-group">
+                    <label for="topic">What do you want to learn about?</label>
+                    <input type="text" id="topic" placeholder="e.g., The impact of quantum computing on modern cryptography" maxlength="500" autofocus>
+                </div>
+                <div class="form-group">
+                    <label for="focus-areas">Focus Areas <span class="hint">(comma-separated, optional)</span></label>
+                    <input type="text" id="focus-areas" placeholder="e.g., security implications, timeline, industry adoption">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="depth">Depth</label>
+                        <select id="depth">
+                            <option value="quick">Quick (2 iterations)</option>
+                            <option value="standard" selected>Standard (5 iterations)</option>
+                            <option value="deep">Deep (10 iterations)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="max-iterations">Max Iterations</label>
+                        <input type="number" id="max-iterations" min="1" max="20" value="5">
+                    </div>
+                    <div class="form-group">
+                        <label class="toggle-wrap">
+                            <input type="checkbox" id="web-search" checked>
+                            <span>Web Search</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Data Sources <span class="hint">(optional)</span></label>
+                    <div id="sources-container"></div>
+                    <div class="source-btns">
+                        <button class="btn-ghost" onclick="addSource('url')">+ URL</button>
+                        <button class="btn-ghost" onclick="addSource('text')">+ Text</button>
+                        <button class="btn-ghost" onclick="addSource('file')">+ File</button>
+                    </div>
+                </div>
+                <button class="btn-primary" onclick="startResearch()" id="start-btn">Start Learning</button>
+            </div>
+        </div>
+
+        <!-- LIVE PROGRESS / RESULTS PANEL -->
+        <div id="panel-session" class="panel">
+            <!-- Top bar with topic + status -->
+            <div class="session-topbar">
+                <div class="session-topbar-left">
+                    <h1 id="session-topic">Loading...</h1>
+                    <span class="status-pill" id="session-status">Running</span>
+                </div>
+                <div class="session-topbar-actions" id="session-actions" style="display:none;">
+                    <button class="btn-sm" onclick="downloadReport()">PDF</button>
+                    <button class="btn-sm" onclick="downloadMarkdown()">Markdown</button>
+                </div>
+            </div>
+
+            <!-- Metrics strip -->
+            <div class="metrics-strip" id="metrics-strip">
+                <div class="metric"><span class="metric-val" id="m-score">--</span><span class="metric-label">Best Score</span></div>
+                <div class="metric"><span class="metric-val" id="m-iteration">--</span><span class="metric-label">Iteration</span></div>
+                <div class="metric"><span class="metric-val" id="m-kept">--</span><span class="metric-label">Kept</span></div>
+                <div class="metric"><span class="metric-val" id="m-discarded">--</span><span class="metric-label">Discarded</span></div>
+                <div class="metric"><span class="metric-val" id="m-sources">--</span><span class="metric-label">Sources</span></div>
+                <div class="metric"><span class="metric-val" id="m-duration">--</span><span class="metric-label">Duration</span></div>
+            </div>
+
+            <!-- Progress bar (only visible while running) -->
+            <div class="progress-track" id="progress-track">
+                <div class="progress-fill" id="progress-fill"></div>
+            </div>
+            <p class="step-text" id="step-text"></p>
+
+            <!-- Live activity feed -->
+            <h2 class="report-heading" id="feed-heading" style="display:none;">Iteration Results</h2>
+            <div class="activity-feed" id="activity-feed">
+                <div class="feed-placeholder">Waiting for learning to start...</div>
+            </div>
+
+            <!-- Quality chart -->
+            <h2 class="report-heading" id="chart-heading" style="display:none;">Quality Progress</h2>
+            <div class="chart-wrap" id="chart-wrap" style="display:none;">
+                <canvas id="quality-chart"></canvas>
+            </div>
+
+            <!-- Report (rendered when complete) -->
+            <div class="report-section" id="report-section" style="display:none;">
+                <h2 class="report-heading">Learning Report</h2>
+                <div id="report-content" class="markdown-body"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- ──── RIGHT SIDEBAR: Sources + Metrics ──── -->
+    <aside id="right-panel">
+        <div class="rp-header">Sources</div>
+        <div id="rp-sources" class="rp-sources">
+            <div class="rp-empty">Select a session to see its sources.</div>
+        </div>
+        <div class="rp-header" style="margin-top:16px;">Metrics</div>
+        <div id="rp-metrics" class="rp-metrics">
+            <div class="rp-empty">No metrics yet.</div>
+        </div>
+    </aside>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+version: "3.9"
+
+services:
+  ever-learn:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ever-learn-agent
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GOOGLE_GENAI_USE_VERTEXAI=${GOOGLE_GENAI_USE_VERTEXAI:-false}
+      - GOOGLE_CLOUD_PROJECT=${GOOGLE_CLOUD_PROJECT:-}
+      - GOOGLE_SEARCH_CX=${GOOGLE_SEARCH_CX:-}
+      - SERPAPI_API_KEY=${SERPAPI_API_KEY:-}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.5-flash}
+      - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY:-}
+      - LANGFUSE_PUBLIC_KEY=${LANGFUSE_PUBLIC_KEY:-}
+      - LANGFUSE_HOST=${LANGFUSE_HOST:-}
+      - DATABASE_HOST=${DATABASE_HOST:-postgres}
+      - DATABASE_PORT=${DATABASE_PORT:-5432}
+      - DATABASE_NAME=${DATABASE_NAME:-everlearn}
+      - DATABASE_USER=${DATABASE_USER:-everlearn}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD:-change_me}
+      - PYTHONUNBUFFERED=1
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - ever_learn_network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: ever-learn-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${DATABASE_NAME:-everlearn}
+      - POSTGRES_USER=${DATABASE_USER:-everlearn}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD:-change_me}
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+    volumes:
+      - ever_learn_pgdata:/var/lib/postgresql/data
+    networks:
+      - ever_learn_network
+
+networks:
+  ever_learn_network:
+    driver: bridge
+
+volumes:
+  ever_learn_pgdata:
