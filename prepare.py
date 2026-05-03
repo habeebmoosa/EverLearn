@@ -148,9 +148,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
-if os.path.isdir(UI_DIR):
-    app.mount("/static", StaticFiles(directory=UI_DIR), name="static")
+# UI is served separately (via Vite dev server or Nginx container)
+# No static file mounting in FastAPI anymore.
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1199,6 +1198,7 @@ def _refresh_langfuse_cache(force: bool = False):
         new_trace_ids[sid] = t.id
         new_list.append({
             "session_id": sid,
+            "pipeline_id": "research",  # Legacy Langfuse sessions are all research
             "topic": topic,
             "status": status,
             "current_iteration": response.current_iteration,
@@ -1423,8 +1423,8 @@ async def get_agent_card():
             )
         ],
         provider=AgentProvider(
-            organization="Drayvn",
-            url="https://drayvn.ai",
+            organization="Habeeb Moosa",
+            url="https://habeebmoosa.com",
         ),
         capabilities=AgentCapability(
             streaming=False,
@@ -1743,6 +1743,7 @@ async def list_research_sessions():
         seen_ids.add(sid)
         sessions.append({
             "session_id": s["session_id"],
+            "pipeline_id": s.get("pipeline_id", "research"),
             "topic": s["topic"],
             "status": s["status"],
             "current_iteration": s["current_iteration"],
@@ -1763,6 +1764,7 @@ async def list_research_sessions():
         sessions.append(
             {
                 "session_id": s["session_id"],
+                "pipeline_id": s.get("pipeline_id", "research"),
                 "topic": s["topic"],
                 "status": s["status"],
                 "current_iteration": s["current_iteration"],
@@ -1891,13 +1893,9 @@ async def db_status():
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    """Serve the main UI."""
-    html_path = os.path.join(UI_DIR, "index.html")
-    if os.path.exists(html_path):
-        with open(html_path, "r") as f:
-            return HTMLResponse(content=f.read())
+    """Serve a basic API root message."""
     return HTMLResponse(
-        content="<h1>EverLearn</h1><p>UI not found. API available at /docs</p>"
+        content="<h1>EverLearn API</h1><p>API is running. UI is served separately on port 5173 (dev) or 3000 (prod). See <a href='/docs'>/docs</a> for API endpoints.</p>"
     )
 
 

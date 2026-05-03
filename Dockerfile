@@ -1,7 +1,7 @@
 # ── EverLearn Agent — Docker Image ──────────────────────
 FROM python:3.11-slim
 
-LABEL maintainer="Drayvn Platform"
+LABEL maintainer="EverLearn"
 LABEL description="EverLearn Agent — Autonomous iterative learning with quality ratchet using Google ADK + Gemini"
 
 WORKDIR /app
