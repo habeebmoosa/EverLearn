@@ -16,7 +16,7 @@ export const api = {
   },
 
   getSession: async (id) => {
-    const res = await fetch(`${API_BASE}/research/sessions/${id}`);
+    const res = await fetch(`${API_BASE}/research/${id}`);
     if (!res.ok) throw new Error('Failed to fetch session');
     return res.json();
   },

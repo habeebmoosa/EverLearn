@@ -41,6 +41,19 @@ services:
     networks:
       - ever_learn_network
 
+  frontend:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: ever-learn-frontend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+    depends_on:
+      - ever-learn
+    networks:
+      - ever_learn_network
+
   postgres:
     image: postgres:16-alpine
     container_name: ever-learn-postgres

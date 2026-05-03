@@ -439,21 +439,6 @@ docker run -p 8000:8000 --env-file .env autonomous-learning-agent
 
 ---
 
-## Cloud Run Deployment
-
-A `deploy.sh` script is included for one-command deployment to Google Cloud Run:
-
-```bash
-cd AutonomousLearningAgent
-chmod +x deploy.sh
-# Edit deploy.sh to update env var values if needed
-./deploy.sh
-```
-
-The script builds the image for `linux/amd64`, pushes to Artifact Registry (`us-central1-docker.pkg.dev/gcp-drayvn-etoc/drayvn-gcr-repo1`), and deploys to Cloud Run with all environment variables configured.
-
----
-
 ## Configuration
 
 ### Research Depth Modes
