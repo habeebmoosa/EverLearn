@@ -37,16 +37,16 @@ function App() {
   // Poll for active session updates
   useEffect(() => {
     let intervalId;
-    
+
     const pollSession = async () => {
       if (!currentSessionId) return;
-      
+
       try {
         const data = await api.getSession(currentSessionId);
         setCurrentSession(data);
-        
+
         // Update session in the sidebar list too
-        setSessions(prev => prev.map(s => 
+        setSessions(prev => prev.map(s =>
           s.session_id === currentSessionId ? { ...s, status: data.status, topic: data.topic } : s
         ));
 
@@ -83,7 +83,7 @@ function App() {
   const handleSubmitTask = async (payload) => {
     try {
       const data = await api.startTask(payload);
-      
+
       // Add immediately to sidebar
       const newSessionMeta = {
         session_id: data.session_id,
@@ -92,10 +92,10 @@ function App() {
         pipeline_id: payload.pipeline_id,
         created_at: new Date().toISOString()
       };
-      
+
       setSessions(prev => [newSessionMeta, ...prev]);
       setCurrentSessionId(data.session_id);
-      
+
     } catch (err) {
       console.error('Failed to start task:', err);
       alert('Failed to start task. See console for details.');
@@ -115,7 +115,7 @@ function App() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface-0">
-      <Sidebar 
+      <Sidebar
         sessions={sessions}
         pipelines={pipelines}
         selectedPipelineId={selectedPipelineId}
@@ -124,14 +124,14 @@ function App() {
         onSelectSession={handleSelectSession}
         onNewTask={handleNewTask}
       />
-      
+
       <main className="flex-1 overflow-hidden relative">
         {!currentSessionId ? (
           <div className="h-full overflow-y-auto">
-            <TaskForm 
-              pipelines={pipelines} 
-              selectedPipelineId={selectedPipelineId} 
-              onSubmit={handleSubmitTask} 
+            <TaskForm
+              pipelines={pipelines}
+              selectedPipelineId={selectedPipelineId}
+              onSubmit={handleSubmitTask}
             />
           </div>
         ) : (
