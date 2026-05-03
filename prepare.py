@@ -1198,6 +1198,7 @@ def _refresh_langfuse_cache(force: bool = False):
         new_trace_ids[sid] = t.id
         new_list.append({
             "session_id": sid,
+            "pipeline_id": "research",  # Legacy Langfuse sessions are all research
             "topic": topic,
             "status": status,
             "current_iteration": response.current_iteration,
@@ -1742,6 +1743,7 @@ async def list_research_sessions():
         seen_ids.add(sid)
         sessions.append({
             "session_id": s["session_id"],
+            "pipeline_id": s.get("pipeline_id", "research"),
             "topic": s["topic"],
             "status": s["status"],
             "current_iteration": s["current_iteration"],
@@ -1762,6 +1764,7 @@ async def list_research_sessions():
         sessions.append(
             {
                 "session_id": s["session_id"],
+                "pipeline_id": s.get("pipeline_id", "research"),
                 "topic": s["topic"],
                 "status": s["status"],
                 "current_iteration": s["current_iteration"],

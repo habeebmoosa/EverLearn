@@ -1,6 +1,14 @@
 import { useState } from 'react';
 
-export default function Sidebar({ sessions, currentSessionId, onSelectSession, onNewTask }) {
+export default function Sidebar({ 
+  sessions, 
+  pipelines,
+  selectedPipelineId,
+  onSelectPipeline,
+  currentSessionId, 
+  onSelectSession, 
+  onNewTask 
+}) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -20,7 +28,7 @@ export default function Sidebar({ sessions, currentSessionId, onSelectSession, o
       <div className="p-3">
         <button
           onClick={onNewTask}
-          className={`flex items-center justify-center gap-2 w-full py-2.5 bg-surface-3 hover:bg-surface-4 text-white rounded-md transition-colors border border-surface-5 ${collapsed ? 'px-2' : 'px-4'}`}
+          className={`flex items-center justify-center gap-2 w-full py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-md transition-colors border border-brand-500/50 mb-4 shadow-sm ${collapsed ? 'px-2' : 'px-4'}`}
           title="New Task"
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -28,12 +36,38 @@ export default function Sidebar({ sessions, currentSessionId, onSelectSession, o
           </svg>
           {!collapsed && <span className="font-medium text-sm">New Task</span>}
         </button>
+
+        {!collapsed && (
+          <div className="mb-2">
+            <label className="block text-[10px] font-bold tracking-wider text-ink-3 uppercase mb-1.5 px-1">
+              Select Agent
+            </label>
+            <div className="relative">
+              <select
+                value={selectedPipelineId || ''}
+                onChange={(e) => onSelectPipeline(e.target.value)}
+                className="w-full appearance-none bg-surface-2 border border-surface-4 text-white text-sm rounded-md py-2 pl-3 pr-8 focus:outline-none focus:ring-1 focus:ring-brand-500 focus:border-brand-500 transition-colors cursor-pointer shadow-sm"
+              >
+                {pipelines.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-ink-3">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
-        {!collapsed && <h2 className="px-3 py-2 text-xs font-semibold tracking-wider text-ink-3 uppercase">Sessions</h2>}
+        {!collapsed && <h2 className="px-3 py-2 text-xs font-semibold tracking-wider text-ink-3 uppercase mt-2">Recent Sessions</h2>}
         
-        {sessions.map(session => (
+        {sessions.filter(s => s.pipeline_id === selectedPipelineId || !selectedPipelineId).map(session => (
           <button
             key={session.session_id}
             onClick={() => onSelectSession(session.session_id)}

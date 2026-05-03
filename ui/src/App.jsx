@@ -6,6 +6,7 @@ import SessionView from './components/SessionView';
 
 function App() {
   const [pipelines, setPipelines] = useState([]);
+  const [selectedPipelineId, setSelectedPipelineId] = useState('');
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [currentSession, setCurrentSession] = useState(null);
@@ -20,6 +21,9 @@ function App() {
           api.getSessions()
         ]);
         setPipelines(pipelinesData.pipelines || []);
+        if (pipelinesData.pipelines && pipelinesData.pipelines.length > 0) {
+          setSelectedPipelineId(pipelinesData.pipelines[0].id);
+        }
         setSessions(sessionsData.sessions || []);
       } catch (err) {
         console.error('Failed to load initial data:', err);
@@ -113,6 +117,9 @@ function App() {
     <div className="flex h-screen overflow-hidden bg-surface-0">
       <Sidebar 
         sessions={sessions}
+        pipelines={pipelines}
+        selectedPipelineId={selectedPipelineId}
+        onSelectPipeline={setSelectedPipelineId}
         currentSessionId={currentSessionId}
         onSelectSession={handleSelectSession}
         onNewTask={handleNewTask}
@@ -121,7 +128,11 @@ function App() {
       <main className="flex-1 overflow-hidden relative">
         {!currentSessionId ? (
           <div className="h-full overflow-y-auto">
-            <TaskForm pipelines={pipelines} onSubmit={handleSubmitTask} />
+            <TaskForm 
+              pipelines={pipelines} 
+              selectedPipelineId={selectedPipelineId} 
+              onSubmit={handleSubmitTask} 
+            />
           </div>
         ) : (
           <div className="h-full relative">

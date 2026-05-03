@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import PipelineCard from './PipelineCard';
 
-export default function TaskForm({ pipelines, onSubmit }) {
-  const [selectedPipelineId, setSelectedPipelineId] = useState('');
+export default function TaskForm({ pipelines, selectedPipelineId, onSubmit }) {
   const [label, setLabel] = useState('');
   const [inputs, setInputs] = useState({});
   const [dataSourcesText, setDataSourcesText] = useState('');
@@ -10,12 +8,12 @@ export default function TaskForm({ pipelines, onSubmit }) {
   const [webSearch, setWebSearch] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Set default pipeline when pipelines load
+  // Reset form when pipeline changes
   useEffect(() => {
-    if (pipelines.length > 0 && !selectedPipelineId) {
-      setSelectedPipelineId(pipelines[0].id);
-    }
-  }, [pipelines]);
+    setLabel('');
+    setInputs({});
+    setDataSourcesText('');
+  }, [selectedPipelineId]);
 
   const activePipeline = pipelines.find(p => p.id === selectedPipelineId);
   const schema = activePipeline?.input_schema?.properties || {};
@@ -67,26 +65,20 @@ export default function TaskForm({ pipelines, onSubmit }) {
   return (
     <div className="max-w-3xl mx-auto w-full pt-12 pb-24 px-6 animate-fade-in">
       <div className="text-center mb-10">
-        <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">What would you like to do?</h1>
-        <p className="text-ink-2 text-lg">Select a specialized agent to help with your task.</p>
+        <div className="inline-block p-4 rounded-2xl bg-surface-2 border border-surface-4 mb-4 shadow-lg">
+          <svg className="w-10 h-10 text-brand-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+          </svg>
+        </div>
+        <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">
+          {activePipeline ? activePipeline.name : 'Select an Agent'}
+        </h1>
+        <p className="text-ink-2 text-lg">
+          {activePipeline ? activePipeline.description || 'Configure and start a new task.' : 'Please select an agent from the sidebar.'}
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-8">
-        
-        {/* Pipeline Selection */}
-        <div>
-          <h2 className="text-sm font-semibold text-ink-3 uppercase tracking-wider mb-4">Select Agent</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {pipelines.map(pipeline => (
-              <PipelineCard 
-                key={pipeline.id} 
-                pipeline={pipeline} 
-                isActive={selectedPipelineId === pipeline.id}
-                onClick={() => setSelectedPipelineId(pipeline.id)} 
-              />
-            ))}
-          </div>
-        </div>
 
         {activePipeline && (
           <div className="bg-surface-2 border border-surface-4 rounded-xl p-6 space-y-6 animate-slide-up">
